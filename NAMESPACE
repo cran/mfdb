@@ -1,0 +1,124 @@
+importFrom("utils", "str", "capture.output", "packageVersion")
+importFrom("stats", "aggregate", "na.pass")
+importFrom("utils", "head", "read.table", "tar", "untar",
+                 "write.table")
+
+# mfdb_bulk.R
+export(mfdb_cs_dump)
+export(mfdb_cs_restore)
+
+# mfdb_aggregate_group.R
+export(mfdb_group)
+export(mfdb_timestep_yearly)
+export(mfdb_timestep_biannually)
+export(mfdb_timestep_quarterly)
+export(mfdb_group_numbered)
+export(mfdb_bootstrap_group)
+
+# mfdb_aggregate_interval.R
+export(mfdb_interval)
+importFrom("utils", "tail")
+
+# mfdb_aggregate_na_group.R
+export(mfdb_na_group)
+
+# mfdb_aggregate_step_interval.R
+export(mfdb_step_interval)
+
+# mfdb.R
+importFrom(DBI, dbConnect, dbDisconnect, dbDriver, dbSendQuery, dbFetch, dbGetQuery, dbCommit, dbRollback, dbGetRowsAffected, dbClearResult, dbWriteTable)
+importFrom(RPostgreSQL, PostgreSQL)
+export(mfdb)
+export(mfdb_disconnect)
+
+# mfdb_dplyr.R
+export(mfdb_dplyr_survey_index)
+export(mfdb_dplyr_division)
+export(mfdb_dplyr_sample)
+export(mfdb_dplyr_predator)
+export(mfdb_dplyr_prey)
+
+# mfdb_helpers.R
+export(mfdb_concatenate_results)
+export(mfdb_find_species)
+
+# mfdb_import_data.R
+export(mfdb_import_temperature)
+export(mfdb_import_survey_index)
+export(mfdb_import_survey)
+export(mfdb_import_stomach)
+
+# mfdb_import_taxonomy.R
+export(mfdb_import_area)
+export(mfdb_import_division)
+export(mfdb_import_sampling_type)
+export(mfdb_import_cs_taxonomy)
+export(mfdb_import_gear_taxonomy)
+export(mfdb_import_tow_taxonomy)
+export(mfdb_import_vessel_taxonomy)
+export(mfdb_import_species_taxonomy)
+export(mfdb_empty_taxonomy)
+
+# mfdb_queries.R
+export(mfdb_area_size)
+export(mfdb_temperature)
+export(mfdb_survey_index_mean)
+export(mfdb_survey_index_total)
+export(mfdb_sample_count)
+export(mfdb_sample_meanlength_stddev)
+export(mfdb_sample_meanlength)
+export(mfdb_sample_totalweight)
+export(mfdb_sample_meanweight)
+export(mfdb_sample_meanweight_stddev)
+export(mfdb_sample_rawdata)
+export(mfdb_sample_scaled)
+export(mfdb_stomach_preycount)
+export(mfdb_stomach_preymeanlength)
+export(mfdb_stomach_preymeanweight)
+export(mfdb_stomach_preyweightratio)
+export(mfdb_stomach_presenceratio)
+
+# mfdb_sharing.R
+export(mfdb_share_with)
+
+# mfdb_aggregate_unaggregated.R
+export(mfdb_unaggregated)
+
+# ewe_model.R
+export(ewe_stanza_group)
+export(ewe_stanzas)
+export(ewe_model)
+export(ewe_diet)
+export(ewe_pedigree)
+
+# gadget_areafile.R
+export(gadget_areafile)
+S3method(gadget_dir_write, gadget_areafile)
+
+# gadget_directory.R
+export(gadget_directory)
+export(gadget_dir_write)
+export(gadget_dir_read)
+S3method(gadget_dir_read, gadget_directory)
+
+# gadget_file.R
+export(gadget_file)
+S3method(print, gadget_file)
+S3method(as.character, gadget_file)
+S3method(gadget_dir_write, gadget_file)
+export(read.gadget_file)
+
+# gadget_fleetfile.R
+export(gadget_fleet_component)
+S3method(gadget_dir_write, gadget_fleet_component)
+
+# gadget_likelihood_component.R
+export(gadget_likelihood_component)
+S3method(gadget_dir_write, gadget_likelihood_component)
+
+# gadeget_stockfile.R
+export(gadget_stockfile_extremes)
+export(gadget_stockfile_refweight)
+export(gadget_stockfile_initialconditions)
+export(gadget_stockfile_recruitment)
+S3method(gadget_dir_write, gadget_stockfile)
