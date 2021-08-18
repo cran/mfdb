@@ -12,15 +12,15 @@ source('tests/utils/inttest-helpers.R')
 
 # Empty database
 if (exists("mdb")) mfdb_disconnect(mdb)
-mfdb('inttest-samples', db_params = db_params, destroy_schema = TRUE)
+mfdb(gsub("inttest", "inttest-samples", Sys.getenv('INTTEST_SCHEMA', 'inttest')), db_params = db_params, destroy_schema = TRUE)
 
 #TODO: Connecting to empty database without ability to populate fails
 
 # Rebuild database, taxonomy got populated
-mdb <- mfdb('inttest-samples', db_params = db_params, save_temp_tables = FALSE)
+mdb <- mfdb(gsub("inttest", "inttest-samples", Sys.getenv('INTTEST_SCHEMA', 'inttest')), db_params = db_params, save_temp_tables = FALSE)
 ok(all(mfdb:::mfdb_fetch(mdb, "SELECT name, description FROM species WHERE species_id = 9999999999")[1,] == 
   mfdb::species[mfdb::species$name == 'TBX', c('name', 'description')]), "Entry for 9999999999 matches package")
-ok(cmp(mfdb:::mfdb_fetch(mdb, "SELECT count(*) FROM species")[1,1], nrow(mfdb::species)), "Species has right number of entries")
+ok(cmp(as.integer(mfdb:::mfdb_fetch(mdb, "SELECT count(*) FROM species")[1,1]), nrow(mfdb::species)), "Species has right number of entries")
 
 ok_group("Unaggregated length / weight / age samples", {
     # Set-up areas/divisions
@@ -315,7 +315,7 @@ ok_group("Unaggregated length / weight / age samples", {
             length = length_group)),
         list("0.0.0.0.0" = structure(
             data.frame(
-                year = c(1998, 1998, 1998),
+                year = as.integer(c(1998, 1998, 1998)),
                 step = c("1", "2", "2"),
                 area = c("divA", "divA", "divA"),
                 age = c("age2", "age1", "age2"),
@@ -648,3 +648,5 @@ ok_group("Removing an import", {
         data.frame()),
        "Data removed again")
 })
+
+mfdb_disconnect(mdb)

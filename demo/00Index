@@ -1,5 +1,4 @@
 inttest-aggregate		Exercise mfdb_aggregate_* functions
-inttest-aggregatefunctions	Exercise postgresql aggregate functions
 inttest-gadgetdirectory		Demonstrate importing data and writing to GADGET directory
 inttest-countryquery		Demonstrate querying for an entire country as well as individual institutes
 inttest-dataimport		Exercise data loading
@@ -17,5 +16,4 @@ inttest-sharing			Exercise DB schema permission management
 inttest-stockfile		Excrcise stockfile generation
 inttest-stomach			Excerise predator / prey relationship stomach data
 inttest-tibble			Exercise data import via. tibbles
-inttest-towdata			Excerise storing / grouping by tow information
 inttest-vessel			Excerise storing / grouping by vessel information

@@ -37,6 +37,7 @@ mfdb_cs_dump <- function(mdb, out_location) {
                     data_out,
                     file = file.path(out_location, table_name),
                     append = (offset > 0),
+                    row.names = FALSE,
                     col.names = (offset == 0),
                     fileEncoding = "UTF-8")
         })
@@ -67,21 +68,33 @@ mfdb_cs_restore <- function(mdb, in_location) {
             })
     }
 
-    mfdb_transaction(mdb, mfdb_disable_constraints(mdb, mfdb_measurement_tables, {
-        # Prey is indirectly linked to case_study, so need to do this first
-        mfdb_send(mdb, "DELETE FROM prey")
+    # Delete from everything else
+    all_tables <- c(
+        mfdb_taxonomy_tables,
+        grep("prey", mfdb_measurement_tables, value = TRUE, fixed = TRUE, invert = TRUE),
+        "prey")  # NB: Prey is indirectly linked to case_study, so need to do this first
 
-        # Delete from everything else
-        for (table_name in rev(c(mfdb_taxonomy_tables, mfdb_measurement_tables))) {
+    if (mfdb_is_duckdb(mdb)) mfdb_transaction(mdb, {
+        # DuckDB can't delete and re-insert in a transaction. Recreate separately
+        # NB: https://github.com/duckdb/duckdb/issues/1625
+        for (table_name in rev(all_tables)) {
             mdb$logger$debug(paste0("Emptying ", table_name))
-            if (table_name != 'prey') {
-                mfdb_send(mdb, "DELETE FROM ", table_name,
-                    NULL)
+            mfdb_send(mdb, "ALTER TABLE ", table_name, " RENAME TO ", table_name, "_bulk_old")
+            mfdb_send(mdb, "CREATE TABLE ", table_name, " AS SELECT * FROM ", table_name, "_bulk_old WHERE 1 = 0")
+            mfdb_send(mdb, "DROP TABLE ", table_name, "_bulk_old")
+        }
+    })
+
+    mfdb_transaction(mdb, mfdb_disable_constraints(mdb, mfdb_measurement_tables, {
+        if (!mfdb_is_duckdb(mdb)) {
+            for (table_name in rev(all_tables)) {
+                mdb$logger$debug(paste0("Emptying ", table_name))
+                mfdb_send(mdb, "DELETE FROM ", table_name)
             }
         }
 
         for (table_name in c(mfdb_taxonomy_tables, mfdb_measurement_tables)) {
-            mdb$logger$debug(paste0("Restoring table ", table_name))
+            mdb$logger$info(paste0("Restoring table ", table_name))
             data_in <- read_data(table_name)
             id_col <- paste0(table_name, '_id')
             if (nrow(data_in) == 0) next
@@ -113,7 +126,7 @@ mfdb_cs_restore <- function(mdb, in_location) {
             })
 
             # Update sequence with new maximum
-            mfdb_fetch(mdb,
+            if (mfdb_is_postgres(mdb)) mfdb_fetch(mdb,
                 "SELECT pg_catalog.setval(",
                 "pg_get_serial_sequence(", sql_quote(table_name), ",", sql_quote(id_col),"),",
                 "MAX(", id_col, ")) FROM ", table_name)

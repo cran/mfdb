@@ -27,7 +27,9 @@ mfdb_import_survey <- function (mdb, data_in, data_source = 'default_sample') {
         institute_id = sanitise_col(mdb, data_in, 'institute', lookup = 'institute', default = c(NA)),
         gear_id = sanitise_col(mdb, data_in, 'gear', lookup = 'gear', default = c(NA)),
         vessel_id = sanitise_col(mdb, data_in, 'vessel', lookup = 'vessel', default = c(NA)),
+        trip_id = sanitise_col(mdb, data_in, 'trip', lookup = 'trip', default = c(NA)),
         tow_id = sanitise_col(mdb, data_in, 'tow', lookup = 'tow', default = c(NA)),
+        population_id = sanitise_col(mdb, data_in, 'population', lookup = 'population', default = c(NA)),
         sampling_type_id = sanitise_col(mdb, data_in, 'sampling_type', lookup = 'sampling_type', default = c(NA)),
         year = sanitise_col(mdb, data_in, 'year'),
         month = sanitise_col(mdb, data_in, 'month', test = function (x) x %in% 1:12),
@@ -41,11 +43,17 @@ mfdb_import_survey <- function (mdb, data_in, data_source = 'default_sample') {
         length_min = sanitise_col(mdb, data_in, 'length_min', default = c(NA)),
         weight = sanitise_col(mdb, data_in, weight_col, default = c(NA)),
         weight_var = sanitise_col(mdb, data_in, 'weight_var', default = c(NA)),
+        liver_weight = sanitise_col(mdb, data_in, 'liver_weight', default = c(NA)),
+        liver_weight_var = sanitise_col(mdb, data_in, 'liver_weight_var', default = c(NA)),
+        gonad_weight = sanitise_col(mdb, data_in, 'gonad_weight', default = c(NA)),
+        gonad_weight_var = sanitise_col(mdb, data_in, 'gonad_weight_var', default = c(NA)),
+        stomach_weight = sanitise_col(mdb, data_in, 'stomach_weight', default = c(NA)),
+        stomach_weight_var = sanitise_col(mdb, data_in, 'stomach_weight_var', default = c(NA)),
         count = sanitise_col(mdb, data_in, 'count', default = count_default))
 
 
     # Likely to be pretty big, so pre-load data into a temporary table
-    temp_tbl <- mfdb_bulk_copy(mdb, 'sample', survey_sample, function (temp_tbl) {
+    mfdb_bulk_copy(mdb, 'sample', survey_sample, function (temp_tbl) {
         mfdb_transaction(mdb, mfdb_disable_constraints(mdb, 'sample', {
             # Remove data_source and re-insert
             data_source_id <- get_data_source_id(mdb, data_source)
@@ -112,7 +120,8 @@ mfdb_import_stomach <- function(mdb, predator_data, prey_data, data_source = "de
         month = sanitise_col(mdb, predator_data, 'month', test = function (x) x %in% 1:12),
         areacell_id = sanitise_col(mdb, predator_data, 'areacell', lookup = 'areacell'),
 
-        stomach_name = sanitise_col(mdb, predator_data, 'stomach_name'),
+        # NB: DuckDB seemingly won't convert this for us
+        stomach_name = as.character(sanitise_col(mdb, predator_data, 'stomach_name')),
         species_id = sanitise_col(mdb, predator_data, 'species', lookup = 'species', default = c(NA)),
         age = sanitise_col(mdb, predator_data, 'age', default = c(NA)),
         sex_id = sanitise_col(mdb, predator_data, 'sex', lookup = 'sex', default = c(NA)),
@@ -149,21 +158,26 @@ mfdb_import_stomach <- function(mdb, predator_data, prey_data, data_source = "de
         # If there's no data, leave at this point
         if (nrow(predator_data) == 0 || nrow(prey_data) == 0) return()
 
-        # Insert predator data, returning all IDs
-        res <- mfdb_bulk_copy(mdb, 'predator', predator_data, function (temp_predator) {
-            mfdb_fetch(mdb,
+        # Insert predator data, in process assigning stomach IDs
+        mfdb_bulk_copy(mdb, 'predator', predator_data, function (temp_predator) {
+            mfdb_send(mdb,
                 "INSERT INTO predator",
                 " (", paste(names(predator_data), collapse=","), ", data_source_id)",
                 " SELECT ", paste(names(predator_data), collapse=","), ", ", sql_quote(data_source_id),
                 " FROM ", temp_predator,
-                " RETURNING predator_id",
                 NULL)
         })
 
-        # Map predator names to database IDs
-        new_levels <- structure(
-            res$predator_id,
-            names = as.character(predator_data$stomach_name))[levels(prey_data$predator_id)]
+        # Map stomach names to database IDs
+        id_name_map <- mfdb_fetch(mdb,
+            "SELECT predator_id, stomach_name",
+            " FROM predator",
+            " WHERE data_source_id = ", sql_quote(data_source_id),
+            "")
+        id_name_map <- structure(id_name_map[,1], names = id_name_map[,2])
+
+        # Convert prey_data$predator_id from factor of stomach names to proper predator_ids.
+        new_levels <- id_name_map[levels(prey_data$predator_id)]
         if (any(is.na(new_levels))) {
             stop("Prey data mentions stomachs not in predator data: ",
                 paste(levels(prey_data$predator_id)[is.na(new_levels)], collapse = ","))
@@ -220,7 +234,8 @@ sanitise_col <- function (mdb, data_in, col_name, default = NULL, lookup = NULL,
         # Fetch corresponding id for each level
         new_levels <- mfdb_fetch(mdb,
             "SELECT name, ", lookup, "_id FROM ", lookup, " AS id",
-            " WHERE name IN ", sql_quote(levels(col), always_bracket = TRUE),
+            # NB: If we're looking for too many levels, just get them all
+            (if (length(levels(col)) < 100) paste0(" WHERE name IN ", sql_quote(levels(col), always_bracket = TRUE)) else ""),
             "")
         if(nrow(new_levels) == 0) {
             stop("None of the input data matches ", lookup, " vocabulary")
@@ -257,6 +272,12 @@ get_data_source_id <- function(mdb, data_source) {
     # Doesn't exist yet, create
     res <- mfdb_insert(mdb, 'data_source', c(
         name = data_source,
-        NULL), returning = "data_source_id")
-    return(res$data_source_id)
+        NULL))
+    res <- mfdb_fetch(mdb, "SELECT data_source_id FROM data_source",
+        " WHERE name = ", sql_quote(data_source),
+        NULL)
+    if (nrow(res) > 0) {
+        return(res[1,1])
+    }
+    stop("Couldn't create data_source")
 }

@@ -8,17 +8,27 @@
 }
 
 \usage{
-    mfdb(case_study_name,
+    mfdb(schema_name,
          db_params = list(),
          destroy_schema = FALSE,
-         check_db_available = FALSE,
          save_temp_tables = FALSE)
 
     mfdb_disconnect(mdb)
 }
 \arguments{
-    \item{case_study_name}{
-        The name of your case study. Your Postgres database can be used to
+    \item{schema_name}{
+        This can be one of:
+
+        \enumerate{
+            \item Postgresql schema name
+            \item A file path ending with "\code{.sqlite}" to connect to a SQLite file database
+            \item A file path ending with "\code{.duckdb}" to connect to a DuckDB file database
+        }
+
+        If connecting to a SQLite/DuckDB database, \var{db_params} should remain empty (
+        \var{schema_name} will be used as a \code{dbname}).
+
+        If connecting to a Postgres database, it can be used to
         store any number of case studies, by storing them in separate
         \emph{schemas}. This parameter defines the schema to connect to,
         and can contain any lower case characters or underscore.
@@ -27,7 +37,16 @@
         Extra parameters to supply to \code{DBI::dbConnect}. By default it will
         search for a "mf" database locally, but you can override any of the parameters,
         in particular \code{host}, \code{dbname}, \code{user}, \code{password}.
-        See \code{methods?RPostgreSQL::dbConnect} for more information.
+        See \code{?RPostgres::Postgres} for more information.
+
+        If \code{dbname} looks like a SQLite database filename,
+        then MFDB will use the \code{RSQLite} driver. If \code{dbdir} is set, then
+        MFDB will use the \code{duckdb} driver. Otherwise, \code{RPostgres} will
+        be used.
+
+        \var{db_params} can also be supplied by environment variable, for example
+        if a \code{MFDB_DBNAME} environment variable is set then it will be used
+        instead of any \code{dbname} supplied here.
     }
     \item{destroy_schema}{
         Optional boolean. If true, all mfdb tables will be destroyed when
@@ -40,10 +59,6 @@
         Optional boolean. If true, any temporary tables will be made permanent
         for later inspection.
     }
-    \item{check_db_available}{
-        Optionabl boolean. If true, we will only check that the datbase
-        connection could be made. Mostly for use in examples.
-    }
     \item{mdb}{
         Database connection created by \code{mfdb()}.
     }
@@ -52,12 +67,14 @@
 \value{A 'mfdb' object representing the DB connection}
 
 \examples{
+# Connect to a SQLite database file
+mdb <- mfdb(tempfile(fileext = '.sqlite'))
+mfdb_disconnect(mdb)
+
 \dontrun{# NB: Requires a PostgreSQL installation, see README
 
 # Connect to local DB, as the "examples" case study
 mdb <- mfdb('examples')
-
-# Disconnect from database
 mfdb_disconnect(mdb)
 
 # Connect to remote server, will prompt for username/password

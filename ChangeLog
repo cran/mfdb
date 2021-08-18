@@ -1,4 +1,45 @@
 
+2021-08-18: Jamie Lentin <lentinj@shuttlethread.com>
+
+    Version 7.1-0
+    * mfdb_dplyr_* now supports nested taxonomy columns, e.g. trip_start_port_latitude
+    * DuckDB support. Specify mfdb('db_filename.duckdb')
+    * SQLite support. Specify mfdb('db_filename.sqlite')
+    * Use bulk_copy to speed up large taxonomy imports
+
+    Schema changes:
+    * Remove taxonomy name restrictions
+    * Change prey.count from INT to DOUBLE
+
+2021-02-23: Jamie Lentin <lentinj@shuttlethread.com>
+
+    Version 7.0-0
+    * Add scale_index to mfdb_survey_index_mean & mfdb_survey_index_total
+    * Add 'area_size' as a possible scale_index value
+    * Switch to requiring RPostgres as the default DBI driver
+    * Allow DB params to be supplied with MFDB_* environment variables
+    * Don't require divisions to be made when querying by areacell
+
+    Schema changes:
+    * Age now stored as NUMERIC
+    * Add trip taxonomy
+    * Add port taxonomy, used by trip for start/end points
+    * Add population taxonomy, for stock groupings
+    * Add vessel_owner taxonomy
+    * Add liver/gonad/stomach weight columns as well as overall weight
+    * Add bait_type/net_type/hook_count/net_count/mesh_size to tow table
+    * Add depth to areacell table
+    * Change schema.count from REAL to DOUBLE
+
+(unreleased)  Jamie Lentin  <lentinj@shuttlethread.com>
+
+    * Preserve precision when calculating total weight
+    * Inline small mfdb_groups to queries, improving performance
+    * Rewrite Rpath support to use Rpath::create.rpath.params
+    * Rollback transactions after user interrupts
+    * Expose open_ended in intervals for gadget3
+    * Renumber all taxonomy IDs if there's an overlap with existing ones (not just the overlapped range)
+
 2020-04-10: Jamie Lentin <lentinj@shuttlethread.com>
 
     Version 6.2-0

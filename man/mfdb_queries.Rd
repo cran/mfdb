@@ -1,5 +1,6 @@
 \name{mfdb_queries}
 \alias{mfdb_area_size}
+\alias{mfdb_area_size_depth}
 \alias{mfdb_temperature}
 \alias{mfdb_survey_index_mean}
 \alias{mfdb_survey_index_total}
@@ -25,15 +26,18 @@
 
 \usage{
 mfdb_area_size(mdb, params)
+mfdb_area_size_depth(mdb, params)
 mfdb_temperature(mdb, params)
-mfdb_survey_index_mean(mdb, cols, params)
-mfdb_survey_index_total(mdb, cols, params)
+mfdb_survey_index_mean(mdb, cols, params, scale_index = NULL)
+mfdb_survey_index_total(mdb, cols, params, scale_index = NULL)
 mfdb_sample_count(mdb, cols, params, scale_index = NULL)
 mfdb_sample_meanlength(mdb, cols, params, scale_index = NULL)
 mfdb_sample_meanlength_stddev(mdb, cols, params, scale_index = NULL)
-mfdb_sample_totalweight(mdb, cols, params)
-mfdb_sample_meanweight(mdb, cols, params, scale_index = NULL)
-mfdb_sample_meanweight_stddev(mdb, cols, params, scale_index = NULL)
+mfdb_sample_totalweight(mdb, cols, params, measurements = c('overall'))
+mfdb_sample_meanweight(mdb, cols, params, scale_index = NULL,
+                       measurements = c('overall'))
+mfdb_sample_meanweight_stddev(mdb, cols, params, scale_index = NULL,
+                              measurements = c('overall'))
 mfdb_sample_rawdata(mdb, cols, params, scale_index = NULL)
 mfdb_sample_scaled(mdb, cols, params, abundance_scale = NULL, scale = 'tow_length')
 mfdb_stomach_preycount(mdb, cols, params)
@@ -47,9 +51,10 @@ mfdb_stomach_presenceratio(mdb, cols, params)
     \item{mdb}{An object created by \code{mfdb}()}
     \item{cols}{Any additonal columns to group by, see details.}
     \item{params}{A list of parameters, see details.}
-    \item{scale_index}{Optional. survey_index used to scale results before aggregation, either "tow_length" or from \link{mfdb_import_survey_index}}
+    \item{scale_index}{Optional. survey_index used to scale results before aggregation, either "tow_length", "area_size" or from \link{mfdb_import_survey_index}}
     \item{abundance_scale}{Optional. Same as \code{scale_index}}
     \item{scale}{Optional. A scale to apply to the resulting values, e.g. 'tow_length'}
+    \item{measurements}{Optional, default 'overall'. A vector of measurement names to use, one of overall, liver, gonad, stomach}
 }
 
 \details{
@@ -126,6 +131,9 @@ to scale counts by the tow length.
         \item{mfdb_area_size}{
             Returns area, (total area) size
         }
+        \item{mfdb_area_size_depth}{
+            Returns area, (total area) size, mean depth, weighted by area size
+        }
         \item{mfdb_temperature}{
             Returns year, step, area, (mean) temperature
         }
@@ -185,9 +193,21 @@ to scale counts by the tow length.
 }
 
 \examples{
-\dontrun{  # NB: Requires a PostgreSQL installation, see README
+mdb <- mfdb(tempfile(fileext = '.duckdb'))
 
-mdb <- mfdb('examples')
+# Define 2 areacells of equal size
+mfdb_import_area(mdb, data.frame(name=c("divA", "divB"), size=1))
+
+# Make up some samples
+samples <- expand.grid(
+    year = '1998',
+    month = c(1:12),
+    areacell = c("divA", "divB"),
+    species = 'COD',
+    age = c(1:5),
+    length = c(0,40,80))
+samples$count <- runif(nrow(samples), 20, 90)
+mfdb_import_survey(mdb, data_source = "x", samples)
 
 # Query numbers by age and length
 agg_data <- mfdb_sample_count(mdb, c('age', 'length'), list(
@@ -203,4 +223,6 @@ gadget_dir_write(gadget_directory(tempfile()), gadget_likelihood_component("catc
         data = agg_data[[1]],
         area = attr(agg_data[[1]], "area"),
         age = attr(agg_data[[1]], "age")))
-}}
+
+mfdb_disconnect(mdb)
+}

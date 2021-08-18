@@ -12,8 +12,8 @@ source('tests/utils/inttest-helpers.R')
 
 # Empty database & rebuild
 if (exists("mdb")) mfdb_disconnect(mdb)
-mfdb('inttest-landings', db_params = db_params, destroy_schema = TRUE)
-mdb <- mfdb('inttest-landings', db_params = db_params, save_temp_tables = FALSE)
+mfdb(gsub("inttest", "inttest-landings", Sys.getenv('INTTEST_SCHEMA', 'inttest')), db_params = db_params, destroy_schema = TRUE)
+mdb <- mfdb(gsub("inttest", "inttest-landings", Sys.getenv('INTTEST_SCHEMA', 'inttest')), db_params = db_params, save_temp_tables = FALSE)
 
 # Set up some areas / divisions
 mfdb_import_area(mdb, data.frame(
@@ -66,13 +66,14 @@ agg_data <- mfdb_sample_count(mdb, c("vessel"), params = list(
     step = mfdb_timestep_biannually,
     area = area_group,
     vessel = vessel_group))
-ok(cmp(agg_data[[1]], structure(
+agg_data[[1]]$number <- as.numeric(agg_data[[1]]$number)  # NB: SQLite returns logical, postgres numeric
+ok(ut_cmp_equal(agg_data[[1]], structure(
     data.frame(
         year = as.integer(2000),
         step = c("1", "1", "2", "2"),
         area = c('divA'),
         vessel = c('1.COM', '2.COM', '1.COM', '2.COM'),
-        number = c(NA, NA, NA, NA, 99)[1:4],  # NB: Create a numeric empty vector
+        number = as.numeric(c(NA, NA, NA, NA)),
         stringsAsFactors = FALSE),
     year = list("2000" = 2000),
     step = mfdb_timestep_biannually,
@@ -217,3 +218,15 @@ ok_group("weight and weight_total isn't allowed", {
             weight_total = c(1110,1510,1310,1110,1310,1410, 1610,1610,1310,1310,1310,1210),
             stringsAsFactors = TRUE)), "weight.*weight_total"), "Can't specify both weight and weight_total")
 })
+
+ok_group("Preserve weight precision", {
+    data_in <- data.frame(year = 2010, month = 1, areacell = '45G01', weight_total = rnorm(1e5, 100, 10))
+    mfdb_import_survey(mdb, data_in)
+    out_mfdb <- mfdb_sample_totalweight(mdb = mdb, cols = NULL, params = list(year = 2010))
+    ok(ut_cmp_equal(
+        out_mfdb[[1]]$total_weight,
+        sum(data_in$weight_total),
+        tolerance = 1e-7), "Total weight through MFDB matches R")
+})
+
+mfdb_disconnect(mdb)

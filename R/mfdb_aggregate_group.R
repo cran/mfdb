@@ -15,8 +15,8 @@ mfdb_group <- function (...) {
 
 pre_query.mfdb_group <- function(mdb, x, col) {
     group <- x
-    lookup <- gsub('(.*\\.)|_id', '', col)
-    datatype <- ifelse(lookup == "species", "BIGINT", ifelse(lookup == "age", "REAL", "INT"))
+    lookup <- if (!is.null(attr(col, 'lookup'))) attr(col, 'lookup') else gsub('(.*\\.)|_id', '', col)
+    datatype <- ifelse(lookup == "species", "BIGINT", ifelse(lookup == "age", "NUMERIC(10,5)", "INT"))
 
     # If the table already exists, nothing to do
     if (mfdb_table_exists(mdb, attr(x, 'table_name'))) {
@@ -42,22 +42,35 @@ pre_query.mfdb_group <- function(mdb, x, col) {
             values <- set[,'value']
             while(length(values) > 0) {
                 quoted_values <- sql_quote(unique(values), always_bracket = TRUE, always_quote = TRUE)
+                # Add potential values from both division and areacell
                 mfdb_send(mdb,
                     "INSERT INTO ", attr(x, 'table_name'),
                     " SELECT ", sql_quote(set[1, 'sample']), " AS sample",
                     ", ", sql_quote(set[1, 'name']), " AS name",
                     ", ", lookup, "_id AS value",
-                    " FROM division",
+                    " FROM (SELECT division, areacell_id FROM division UNION SELECT name, areacell_id FROM areacell) divac",
                     " WHERE division IN ", quoted_values)
                 values <- values[duplicated(values)]
             }
         }
     } else if (lookup %in% mfdb_taxonomy_tables) {
-        mismatches <- mfdb_fetch(mdb,
-            "SELECT d.name",
-            " FROM UNNEST(ARRAY", sql_quote(unique(unlist(x)), always_bracket = TRUE, brackets = "[]"), ") AS d",
-            " LEFT OUTER JOIN ", lookup, " x ON d.name = x.name",
-            " WHERE x.name IS NULL")
+        if (mfdb_is_postgres(mdb)) {
+            mismatches <- mfdb_fetch(mdb,
+                "SELECT d.name",
+                " FROM UNNEST(ARRAY", sql_quote(unique(unlist(x)), always_bracket = TRUE, brackets = "[]"), ") AS d",
+                " LEFT OUTER JOIN ", lookup, " x ON d.name = x.name",
+                " WHERE x.name IS NULL")
+        } else {
+            # No UNNEST(ARRAY()), use a temporary table
+            mfdb_send(mdb, "CREATE TEMPORARY TABLE aggregate_group_newnames (name VARCHAR(1024) NOT NULL);")
+            mfdb_insert(mdb, "aggregate_group_newnames", data.frame(name = unique(unlist(x)), stringsAsFactors = FALSE))
+            mismatches <- mfdb_fetch(mdb,
+                "SELECT d.name",
+                " FROM aggregate_group_newnames AS d",
+                " LEFT OUTER JOIN ", lookup, " x ON d.name = x.name",
+                " WHERE x.name IS NULL")
+            mfdb_send(mdb, "DROP TABLE aggregate_group_newnames")
+        }
         if (nrow(mismatches) > 0) {
             stop("Input data has items that don't match ", lookup, " vocabulary: ",
                 paste(head(mismatches[,1], n = 50), collapse = ","),
@@ -93,6 +106,16 @@ pre_query.mfdb_group <- function(mdb, x, col) {
     # Index the lookup table to speed up queries
     mfdb_send(mdb, sql_create_index(attr(x, 'table_name'), c('value', 'name', 'sample')))
 
+    # Fetch lookup content, can we represent this as a smallset? If so, convert
+    if (length(unlist(x)) < 40) {
+        lookup_content <- mfdb_fetch(mdb, paste0("SELECT sample, name, value FROM ", attr(x, 'table_name')))
+        if (ncol(lookup_content) > 0 && nrow(lookup_content) > 0 && anyDuplicated(lookup_content[,'value']) == 0) {
+            class(x) <- c("mfdb_smallset", class(x))
+            attr(x, 'lookup_content') <- lookup_content
+            return(invisible(x))
+        }
+    }
+
     invisible(NULL)
 }
 
@@ -105,8 +128,12 @@ from_clause.mfdb_group <- function(mdb, x, col, outputname, group_disabled = FAL
 }
 
 where_clause.mfdb_group <- function(mdb, x, col, outputname, group_disabled = FALSE) {
+    lookup <- if (!is.null(attr(col, 'lookup'))) attr(col, 'lookup') else gsub('(.*\\.)|_id', '', col)
+
     paste0(col, " = ", attr(x, 'table_name'), ".value")
 }
+
+##### mfdb_group helpers
 
 # Some default time groupings
 mfdb_timestep_yearly <- mfdb_group('1' = 1:12)
@@ -123,6 +150,50 @@ mfdb_group_numbered <- function (prefix, ...) {
 
     do.call(mfdb_group, items)
 }
+
+##### mfdb_smallset: mfdb_group implementation that inlines the group data into the query
+
+pre_query.mfdb_smallset <- function(mdb, x, col) {
+    # No need to do anything, pre_query.mfdb_group already added the lookup_content
+}
+
+select_clause.mfdb_smallset <- function(mdb, x, col, outputname, group_disabled = FALSE) {
+    lookup <- if (!is.null(attr(col, 'lookup'))) attr(col, 'lookup') else gsub('(.*\\.)|_id', '', col)
+
+    groups <- names(sort(table(attr(x, 'lookup_content')$name)))
+    if (length(groups) == 1) {
+        # If the where clause matches, then it's in this group
+        return(paste0(sql_quote(groups[[1]]), " AS ", outputname))
+    }
+    return(paste(c(
+        "CASE",
+        vapply(head(groups, -1), function (g) {
+            paste0(
+                " WHEN ", col,
+                " IN ", sql_quote(attr(x, 'lookup_content')[attr(x, 'lookup_content')$name == g, 'value'], always_bracket = TRUE),
+                " THEN ", sql_quote(g))
+        }, character(1)),
+        " ELSE ", sql_quote(tail(groups, 1)), " END AS ", outputname), collapse = ""))
+}
+
+from_clause.mfdb_smallset <- function(mdb, x, col, outputname, group_disabled = FALSE) {
+    # No need to add temporary table to query, it's embedded into it
+    c()
+}
+
+where_clause.mfdb_smallset <- function(mdb, x, col, outputname, group_disabled = FALSE) {
+    lookup <- if (!is.null(attr(col, 'lookup'))) attr(col, 'lookup') else gsub('(.*\\.)|_id', '', col)
+
+    return(paste0(col, " IN ", sql_quote(attr(x, 'lookup_content')[,'value'], always_bracket = TRUE)))
+}
+
+agg_summary.mfdb_smallset <- function(mdb, x, col, outputname, data, sample_num) {
+    attr(x, 'lookup_content') <- NULL
+    class(x) <- class(x)[!(class(x) %in% 'mfdb_smallset')]
+    return(x)
+}
+
+##### mfdb_bootstrap_group: Extends mfdb_group by offering random sampling from within
 
 mfdb_bootstrap_group <- function (count, group, seed = NULL) {
     if (!('mfdb_group' %in% class(group))) {

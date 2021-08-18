@@ -29,42 +29,65 @@ mfdb_import_taxonomy <- function (mdb, table_name, data_in, extra_cols = c('desc
         }
     }
 
-    # Fetch all existing ids, quit if all are there
-    existing <- mfdb_fetch(mdb,
-        "SELECT ", id_col, ", name, ", paste(extra_cols, collapse = ", "),
-        " FROM ", table_name,
-        " ORDER BY 1")
+    mfdb_bulk_copy(mdb, table_name, data_in, function (temp_tbl) mfdb_transaction(mdb, {
+        # Remove rows where nothing changed, if we remove all of them, exit.
+        # NB: This won't work if an extra_col is float (e.g. latitude), but should only be an optimisation
+        matching_rows <- mfdb_send(mdb, "DELETE FROM ", temp_tbl, " WHERE ", id_col, " IN (",
+            "SELECT tmp.", id_col,
+            " FROM ", temp_tbl, " AS tmp",
+            " JOIN ", table_name, " AS cur ON cur.name = tmp.name",
+            " WHERE ", paste0("cur.", extra_cols, " = tmp.", extra_cols, collapse = " AND "),
+            ")", result = "rowcount")
+        if (matching_rows >= nrow(data_in)) return(NULL)
 
-    # Throw away rows which don't need updating
-    if (nrow(existing) > 0) {
-        data_in <- data_in[!(data_in$name %in% merge(
-            existing[, c('name', extra_cols)],
-            data_in[,  c('name', extra_cols)])$name), ]
-        if (nrow(data_in) == 0) {
-            mdb$logger$info(paste0("Taxonomy ", table_name ," up-to-date"))
-            return()
+        if (mfdb_is_duckdb(mdb)) {
+            # DuckDB can't UPDATE & INSERT in the same transaction, save updates for later
+            mfdb_send(mdb, "DROP TABLE IF EXISTS ddb_updates_", table_name)
+            mfdb_send(mdb,
+                "CREATE TEMPORARY TABLE ddb_updates_", table_name, "  AS",
+                " SELECT cur.", id_col,
+                "      , cur.name",
+                "      , ", paste0("tmp.", extra_cols, collapse = ","),
+                "   FROM ", table_name, " AS cur",
+                "      , ", temp_tbl, " AS tmp",
+                "  WHERE cur.name = tmp.name")
+        } else {
+            # Update all rows where names match, remove
+            mfdb_send(mdb, "UPDATE ", table_name, " AS cur",
+                " SET ", paste0(extra_cols, " = tmp.", extra_cols, collapse = ","),
+                " FROM ", temp_tbl, " AS tmp",
+                " WHERE cur.name = tmp.name")
         }
-    }
-    mdb$logger$info(paste0("Taxonomy ", table_name ," needs updating"))
+        mfdb_send(mdb, "DELETE FROM ", temp_tbl, " AS tmp WHERE tmp.name IN (SELECT name FROM ", table_name, ")")
 
-    mfdb_transaction(mdb, {
-        # New rows should be inserted
-        new_data <- data_in[data_in$name %in% setdiff(data_in$name, existing$name), ]
-
-        # If some ids appear in both new and existing, give them new IDs.
-        overlapping_ids <- intersect(new_data[[id_col]], existing[[id_col]])
-        if (length(overlapping_ids) > 0) {
-            new_data[match(overlapping_ids, new_data[[id_col]]), id_col] <-
-                seq(max(existing[[id_col]]) + 1, length.out = length(overlapping_ids))
+        # Renumber remaining entries if there's an overlap
+        has_overlap <- mfdb_fetch(mdb, "SELECT EXISTS(",
+            "SELECT 1 FROM ", table_name, " cur, ", temp_tbl, " tmp WHERE cur.", id_col, " = tmp.", id_col,
+            ")")[1,1]
+        if (has_overlap) {
+            max_id <- mfdb_fetch(mdb, "SELECT MAX(", id_col, ") FROM ", table_name)[1,1]
+            mfdb_send(mdb,
+                "UPDATE ", temp_tbl,
+                " SET ", id_col, " = ", id_col, " + ", max_id)
         }
 
-        mfdb_insert(mdb, table_name, new_data)
+        # Insert remaining rows into table
+        mfdb_send(mdb,
+            "INSERT INTO ", table_name,
+            " (", paste(c(id_col, 'name', extra_cols), collapse=","), ")",
+            " SELECT ", paste(c(id_col, 'name', extra_cols), collapse=","),
+            " FROM ", temp_tbl,
+            NULL)
+    }))
 
-        # Rows with matching names should be updated, but existing ids kept
-        if (nrow(existing) > 0) mfdb_update(mdb,
-            table_name,
-            merge(existing[, c(id_col, 'name')], data_in[, c('name', extra_cols)]),
-            where = c())
+    if (mfdb_is_duckdb(mdb)) mfdb_transaction(mdb, {
+        # Now do the updates
+        mfdb_send(mdb,
+            "UPDATE ", table_name, " AS cur",
+            "   SET ", paste0(extra_cols, " = tmp.", extra_cols, collapse = ","),
+            "  FROM  ddb_updates_", table_name, " AS tmp",
+            " WHERE cur.", id_col, " = tmp.", id_col)
+        mfdb_send(mdb, "DROP TABLE ddb_updates_", table_name)
     })
 
     invisible(NULL)
@@ -78,10 +101,13 @@ mfdb_import_cs_taxonomy <- function(mdb, taxonomy_name, data_in) {
             "' should be one of ", paste(mfdb_taxonomy_tables, collapse = ", "))
     }
 
-    extra_cols <- mfdb_get_taxonomy_extra_cols(taxonomy_name)
+    col_defs <- mfdb_taxonomy_table_defs[[taxonomy_name]]$cols
+    col_defs <- t(matrix(col_defs, nrow = 3))
+    extra_cols <- col_defs[,1]
     sanitized_extra_data <- lapply(extra_cols, function (col) {
         if (grepl("_id$", col)) {
-            return(sanitise_col(mdb, data_in, gsub("_id$", "", col), lookup = gsub("_id$", "", col), default = c(NA)))
+            lookup_tbl <- col_def_get_foreign_key(col_defs[col_defs[,1] == col, 2])
+            return(sanitise_col(mdb, data_in, gsub("_id$", "", col), lookup = lookup_tbl$table, default = c(NA)))
         }
         return(sanitise_col(mdb, data_in, col, default = c(NA)))
     })
@@ -109,8 +135,14 @@ mfdb_import_cs_taxonomy <- function(mdb, taxonomy_name, data_in) {
 }
 mfdb_import_area <- function(mdb, data_in) mfdb_import_cs_taxonomy(mdb, 'areacell', data_in)
 mfdb_import_sampling_type <- function(mdb, data_in) mfdb_import_cs_taxonomy(mdb, 'sampling_type', data_in)
+mfdb_import_bait_type_taxonomy <- function(mdb, data_in) mfdb_import_cs_taxonomy(mdb, 'bait_type', data_in)
 mfdb_import_tow_taxonomy <- function(mdb, data_in) mfdb_import_cs_taxonomy(mdb, 'tow', data_in)
+mfdb_import_net_type_taxonomy <- function(mdb, data_in) mfdb_import_cs_taxonomy(mdb, 'net_type', data_in)
+mfdb_import_population_taxonomy <- function(mdb, data_in) mfdb_import_cs_taxonomy(mdb, 'population', data_in)
+mfdb_import_port_taxonomy <- function(mdb, data_in) mfdb_import_cs_taxonomy(mdb, 'port', data_in)
+mfdb_import_trip_taxonomy <- function(mdb, data_in) mfdb_import_cs_taxonomy(mdb, 'trip', data_in)
 mfdb_import_vessel_taxonomy <- function(mdb, data_in) mfdb_import_cs_taxonomy(mdb, 'vessel', data_in)
+mfdb_import_vessel_owner_taxonomy <- function(mdb, data_in) mfdb_import_cs_taxonomy(mdb, 'vessel_owner', data_in)
 mfdb_import_species_taxonomy <- function(mdb, data_in) mfdb_import_cs_taxonomy(mdb, 'species', data_in)
 mfdb_import_gear_taxonomy <- function(mdb, data_in) mfdb_import_cs_taxonomy(mdb, 'gear', data_in)
 
@@ -140,10 +172,10 @@ mfdb_import_division <- function (mdb, data_in) {
     }
 
     mfdb_transaction(mdb, {
-        dbSendQuery(mdb$db, paste0(
+        mfdb_send(mdb,
             "DELETE FROM division",
             " WHERE division IN ", sql_quote(unique(data_in$division), always_bracket = TRUE),
-            ""))
+            "")
         res <- mfdb_insert(mdb, 'division', data_in)
     })
 }

@@ -12,8 +12,8 @@ source('tests/utils/inttest-helpers.R')
 
 # Empty database
 if (exists("mdb")) mfdb_disconnect(mdb)
-mfdb('inttest-bootstrap', db_params = db_params, destroy_schema = TRUE)
-mdb <- mfdb('inttest-bootstrap', db_params = db_params, save_temp_tables = FALSE)
+mfdb(gsub("inttest", "inttest-bootstrap", Sys.getenv('INTTEST_SCHEMA', 'inttest')), db_params = db_params, destroy_schema = TRUE)
+mdb <- mfdb(gsub("inttest", "inttest-bootstrap", Sys.getenv('INTTEST_SCHEMA', 'inttest')), db_params = db_params, save_temp_tables = FALSE)
 
 ok_group("Bootstrap samples of area sizes and lengths", {
     # Set-up areas/divisions
@@ -258,3 +258,5 @@ ok_group("Bootstrapped empty results", {
         "0.0.0", "0.0.1", "0.0.2", "0.0.3", "0.0.4",
         NULL)), "Still got 5 data.frames")
 })
+
+mfdb_disconnect(mdb)

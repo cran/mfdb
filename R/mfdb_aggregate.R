@@ -35,7 +35,7 @@ agg_summary.mfdb_aggregate <- function(mdb, x, col, outputname, data, sample_num
 pre_query.NULL <- pre_query.mfdb_aggregate
 sample_clause.NULL <- sample_clause.mfdb_aggregate
 select_clause.NULL <- function(mdb, x, col, outputname, group_disabled = FALSE) {
-    lookup <- gsub('(.*\\.)|_id', '', col)
+    lookup <- if (!is.null(attr(col, 'lookup'))) attr(col, 'lookup') else gsub('(.*\\.)|_id', '', col)
 
     if (lookup %in% mfdb_taxonomy_tables) {
         return(paste0("'all' AS ", outputname))
@@ -50,7 +50,7 @@ select_clause.NULL <- function(mdb, x, col, outputname, group_disabled = FALSE) 
 from_clause.NULL <- from_clause.mfdb_aggregate
 where_clause.NULL <- function(mdb, x, col, outputname, group_disabled = FALSE) c()
 agg_summary.NULL <- function(mdb, x, col, outputname, data, sample_num) {
-    lookup <- gsub('(.*\\.)|_id', '', col)
+    lookup <- if (!is.null(attr(col, 'lookup'))) attr(col, 'lookup') else gsub('(.*\\.)|_id', '', col)
 
     if (lookup %in% mfdb_taxonomy_tables) {
         return(list(all = mfdb_fetch(mdb, "SELECT name FROM ", lookup)$name))
@@ -66,7 +66,7 @@ agg_summary.NULL <- function(mdb, x, col, outputname, data, sample_num) {
 pre_query.numeric <- pre_query.mfdb_aggregate
 sample_clause.numeric <- sample_clause.mfdb_aggregate
 select_clause.numeric <- function(mdb, x, col, outputname, group_disabled = FALSE) {
-    lookup <- gsub('(.*\\.)|_id', '', col)
+    lookup <- if (!is.null(attr(col, 'lookup'))) attr(col, 'lookup') else gsub('(.*\\.)|_id', '', col)
 
     # Look up in taxonomy
     if (lookup %in% mfdb_taxonomy_tables) {
@@ -81,19 +81,22 @@ select_clause.numeric <- function(mdb, x, col, outputname, group_disabled = FALS
 }
 from_clause.numeric <- from_clause.mfdb_aggregate
 where_clause.numeric <- function(mdb, x, col, outputname, group_disabled = FALSE) {
-    lookup <- gsub('(.*\\.)|_id', '', col)
+    lookup <- if (!is.null(attr(col, 'lookup'))) attr(col, 'lookup') else gsub('(.*\\.)|_id', '', col)
 
     if (!is.vector(x)) return("")
 
     # Look up in taxonomy
+    # NB: ANY((SELECT ARRAY( ... ))::INTEGER[]) forces Postgres to precompute the nested query,
+    # which will ~always be an improvment for the relatively small amounts of data we're joining with
+    # https://stackoverflow.com/questions/14987321/postgresql-in-operator-with-subquery-poor-performance
     if (lookup %in% mfdb_taxonomy_tables) {
         return(paste0(
-            "(", col, " IN ",
+            "(", col, (if (mfdb_is_postgres(mdb)) " = ANY((SELECT ARRAY" else " IN "),
             "(SELECT ", lookup, "_id FROM ", lookup, " WHERE name IN ",
             sql_quote(x[!is.na(x)], always_bracket = TRUE),
             " OR t_group IN ",
             sql_quote(x[!is.na(x)], always_bracket = TRUE),
-            ")",
+            (if (mfdb_is_postgres(mdb)) paste0("))::", (if (lookup == 'species') 'BIGINT' else 'INTEGER') , "[])") else ")"),
             if (NA %in% x) paste0(" OR ", col, " IS NULL"),
             ")"))
     }

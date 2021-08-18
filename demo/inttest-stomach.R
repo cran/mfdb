@@ -12,13 +12,21 @@ source('tests/utils/inttest-helpers.R')
 
 cmp_table <- function(tbls, expected) {
     ok(cmp(length(tbls), 1), "result only returned one data.frame")
+
+    if (class(tbls[[1]]$number) == 'integer64') {
+        tbls[[1]]$number <- as.numeric(tbls[[1]]$number)
+    }
+    if (class(tbls[[1]]$predator_count) == 'integer64') {
+        tbls[[1]]$predator_count <- as.numeric(tbls[[1]]$predator_count)
+    }
+
     cmp(tbls[[1]][names(tbls[[1]])], expected)
 }
 
 # Empty database & rebuild
 if (exists("mdb")) mfdb_disconnect(mdb)
-mfdb('inttest-stomach', db_params = db_params, destroy_schema = TRUE)
-mdb <- mfdb('inttest-stomach', db_params = db_params, save_temp_tables = FALSE)
+mfdb(gsub("inttest", "inttest-stomach", Sys.getenv('INTTEST_SCHEMA', 'inttest')), db_params = db_params, destroy_schema = TRUE)
+mdb <- mfdb(gsub("inttest", "inttest-stomach", Sys.getenv('INTTEST_SCHEMA', 'inttest')), db_params = db_params, save_temp_tables = FALSE)
 
 # Set-up areas/divisions
 mfdb_import_area(mdb, data.frame(
@@ -444,3 +452,5 @@ AA		CAP		1			1	10	5
              prey_species = 'CAP'))[['0.0.0.0']]),
          data.frame()), "cod2000 data removed")
 })
+
+mfdb_disconnect(mdb)

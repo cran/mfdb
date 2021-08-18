@@ -23,11 +23,13 @@ mfdb_step_interval <- function (prefix, by, from = 0, to = NULL, open_ended = FA
 # Use integer division to pick correct group
 select_clause.mfdb_step_interval <- function(mdb, x, col, outputname, group_disabled = FALSE) {
     #TODO: add x$from somewhere to fudge steps
-    val <- paste0("greatest(floor(", col, ")::integer, ", sql_quote(x$from), ")")
-    if (!is.null(x$to)) val <- paste0("least(", val, ", ", sql_quote(x$to - x$by), ")")
+    greatest_fn <- if (mfdb_is_sqlite(mdb)) "MAX" else "GREATEST"
+    least_fn <- if (mfdb_is_sqlite(mdb)) "MIN" else "LEAST"
+    val <- paste0(greatest_fn, "(CAST(floor(", col, ") AS integer), ", sql_quote(x$from), ")")
+    if (!is.null(x$to)) val <- paste0(least_fn, "(", val, ", ", sql_quote(x$to - x$by), ")")
 
     paste0(sql_quote(x$prefix),
-        " || (", val, " / ", sql_quote(x$by), ") * ", sql_quote(x$by),
+        " || CAST((", val, " / ", sql_quote(x$by), ") * ", sql_quote(x$by), " AS VARCHAR)",
         " AS ", outputname)
 }
 
@@ -65,10 +67,14 @@ agg_summary.mfdb_step_interval <- function(mdb, x, col, outputname, data, sample
     names(out) <- paste0(x$prefix, out)
 
     # Expand this to have min/max values
-    return(mapply(function (curVal, nextVal) {
+    out <- mapply(function (curVal, nextVal) {
         structure(
             call("seq", curVal, nextVal - 1),
             min = curVal,
             max = nextVal)
-    }, out[1:length(out) - 1], out[2:length(out)], SIMPLIFY = FALSE))
+    }, out[1:length(out) - 1], out[2:length(out)], SIMPLIFY = FALSE)
+    if ('lower' %in% attr(x, 'open_ended')) attr(out[[1]], 'min_open_ended') <- TRUE
+    if ('upper' %in% attr(x, 'open_ended')) attr(out[[length(out)]], 'max_open_ended') <- TRUE
+
+    return(out)
 }

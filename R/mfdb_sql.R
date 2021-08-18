@@ -21,8 +21,24 @@ sql_quote <- function(v, always_bracket = FALSE, always_quote = FALSE, brackets 
 sql_vquote <- Vectorize(sql_quote)
 
 sql_create_index <- function(table, cols) {
-   paste0(c("CREATE INDEX ON ", table, " (", paste0(cols, collapse = ","), ")"), collapse = "")
+   index_name <- paste(c("idx", table, cols), collapse = "_")
+   paste0(c("CREATE INDEX ", index_name, " ON ", table, " (", paste0(cols, collapse = ","), ")"), collapse = "")
 }
+
+# Return dbnull / pg / sqlite or unknown
+mfdb_db_backend <- function(mdb) {
+    if (class(mdb$db) == 'dbNull') return('dbnull')
+
+    drv_package <- attr(class(mdb$db_args$drv), 'package')
+    if (length(drv_package) == 0) return ('dbnull')
+    if (drv_package %in% c('RPostgres', 'RPostgreSQL')) return('pg')
+    if (drv_package %in% c('RSQLite')) return('sqlite')
+    if (drv_package %in% c('duckdb')) return('duckdb')
+    return('unknown')
+}
+mfdb_is_postgres <- function (mdb) mfdb_db_backend(mdb) == 'pg'
+mfdb_is_sqlite <- function (mdb) mfdb_db_backend(mdb) == 'sqlite'
+mfdb_is_duckdb <- function (mdb) mfdb_db_backend(mdb) == 'duckdb'
 
 # Concatenate queries together and send to database
 mfdb_send <- function(mdb, ..., result = "") {
@@ -51,33 +67,52 @@ mfdb_send <- function(mdb, ..., result = "") {
         return(mdb$ret_recordset)
     }
 
+    # Log query, and optionally the explain plan, enable with mdb$explain_plan <- TRUE
+    mdb$logger$finest(query)
+    if (isTRUE(mdb$explain_plan) && result == 'rows') {
+        writeLines("-----------------------------")
+        writeLines(query)
+        res <- dbSendQuery(mdb$db, paste(c(
+            pg = "EXPLAIN ANALYZE",
+            sqlite = "EXPLAIN QUERY PLAN",
+            # TODO: This isn't working yet, there are no results
+            duckdb = "EXPLAIN",
+            dbnull = "EXPLAIN",
+            unknown = "EXPLAIN")[[mfdb_db_backend(mdb)]], query))
+        if (DBI::dbHasCompleted(res)) writeLines("No plan.")
+        while (!DBI::dbHasCompleted(res)) {
+            x <- DBI::dbFetch(res)
+            if (mfdb_is_postgres(mdb)) writeLines(x[[1]]) else print(x)
+        }
+        writeLines("-----------------------------")
+        dbClearResult(res)
+    }
+
     res <- dbSendQuery(mdb$db, query)
+    on.exit(dbClearResult(res))
 
     if (is.function(result)) {
         offset <- 0
-        while (!DBI::dbHasCompleted(res)) {
+        while (offset == 0 || !DBI::dbHasCompleted(res)) {
             result(DBI::dbFetch(res, n = 1000), offset)
             offset <- offset + 1000
         }
-        dbClearResult(res)
         return(invisible(NULL))
     }
     if (result == "rowcount") {
         out <- DBI::dbGetRowsAffected(res)
-        dbClearResult(res)
         return(out)
     }
     if (result == "rows") {
         out <- DBI::dbFetch(res)
-        dbClearResult(res)
         return(out)
     }
-    return(res)
+    return(invisible(NULL))
 }
 mfdb_fetch <- function(mdb, ...) mfdb_send(mdb, ..., result = "rows")
 
 # Insert a vector row or data.frame of rows into table_name
-mfdb_insert <- function(mdb, table_name, data_in, returning = "", extra = c()) {
+mfdb_insert <- function(mdb, table_name, data_in, extra = c()) {
     insert_row <- function (r) {
         if (class(mdb$db) == 'dbNull') mdb$ret_rowcount <- mdb$ret_rows <- if (is.null(nrow(r))) 1 else nrow(r)
         mfdb_send(mdb, "INSERT INTO ", paste(table_name, collapse = ""),
@@ -86,8 +121,7 @@ mfdb_insert <- function(mdb, table_name, data_in, returning = "", extra = c()) {
                 sql_quote(c(r, extra), always_bracket = TRUE)
             else
                 paste0(vapply(seq_len(nrow(r)), function (i) { sql_quote(c(r[i,], extra), always_bracket = TRUE) }, ""), collapse = ","),
-            (if (nzchar(returning)) paste0(c(" RETURNING ", returning), collapse = "") else ""),
-            result = ifelse(nzchar(returning), "rows", "rowcount"))
+            result = "rowcount")
     }
     if (!is.data.frame(data_in)) {
         # Insert single row
@@ -100,12 +134,12 @@ mfdb_insert <- function(mdb, table_name, data_in, returning = "", extra = c()) {
         res <- do.call(rbind, lapply(
             split(data_in, seq_len(nrow(data_in)) %/% 1000),
             insert_row))
-        return(if (nzchar(returning)) res else sum(res))
+        return(sum(res))
     }
 }
 
 # Update a vector row or data.frame of rows from table_name
-mfdb_update <- function(mdb, table_name, data_in, returning = "", extra = c(), where = list()) {
+mfdb_update <- function(mdb, table_name, data_in, extra = c(), where = list()) {
     id_col <- paste0(table_name, '_id')
 
     update_row <- function (r) {
@@ -147,41 +181,56 @@ mfdb_bulk_copy <- function(mdb, target_table, data_in, fn) {
     }
 
     # Fetch table definition from DB, so we can recreate for temporary table
-    cols <- mfdb_fetch(mdb, "SELECT column_name, data_type",
-        " FROM information_schema.columns",
-        " WHERE table_schema = ", sql_quote(mdb$schema),
-        " AND table_name = ", sql_quote(target_table),
-        NULL
-    )
-    rownames(cols) <- cols$column_name
-    if (nrow(cols) == 0) stop("Didn't find table ", target_table)
+    if (mfdb_is_postgres(mdb) || class(mdb$db) == 'dbNull') {
+        cols <- mfdb_fetch(mdb, "SELECT column_name, data_type",
+            " FROM information_schema.columns",
+            " WHERE table_schema = ", sql_quote(mdb$schema),
+            " AND table_name = ", sql_quote(target_table),
+            NULL)
+        if (nrow(cols) == 0) stop("Didn't find table ", target_table)
+        cols <- structure(cols$data_type, names = cols$column_name)
+    } else if (mfdb_is_sqlite(mdb) || mfdb_is_duckdb(mdb)) {
+        cols <- mfdb_fetch(mdb, "PRAGMA table_info(", target_table, ")")
+        cols <- structure(cols$type, names = cols$name)
+    } else stop("Unknown DB type")
 
     mdb$logger$debug("Writing rows to temporary table")
-
     tryCatch({
-        mfdb_send(mdb, "SET CLIENT_ENCODING TO 'LATIN1'") # Not sure.
-        mfdb_send(mdb, "SET search_path TO pg_temp")
+        if (mfdb_is_postgres(mdb)) mfdb_send(mdb, "SET CLIENT_ENCODING TO 'LATIN1'") # Not sure.
+        if (mfdb_is_postgres(mdb)) mfdb_send(mdb, "SET search_path TO pg_temp")
         if (mfdb_table_exists(mdb, temp_tbl)) mfdb_send(mdb, "DROP TABLE ", temp_tbl)
 
         dbWriteTable(mdb$db, temp_tbl, data_in, row.names = FALSE,
-            field.types = structure(cols[names(data_in), 'data_type'], names = names(data_in)))
+            field.types = structure(cols[names(data_in)], names = names(data_in)))
     }, finally = {
-        mfdb_send(mdb, "SET CLIENT_ENCODING TO 'UTF8'")
-        mfdb_send(mdb, "SET search_path TO ", paste(mdb$schema, 'pg_temp', sep =","))
+        # These will fail if a transaction is aborted, but in that case it'll roll back anyway
+        mfdb_ignore_failed_transction(mdb, {
+            if (mfdb_is_postgres(mdb)) mfdb_send(mdb, "SET CLIENT_ENCODING TO 'UTF8'")
+            if (mfdb_is_postgres(mdb)) mfdb_send(mdb, "SET search_path TO ", paste(mdb$schema, 'pg_temp', sep =","))
+        })
     })
-    temp_tbl <- paste(c('pg_temp', temp_tbl), collapse = ".")
+    if (mfdb_is_postgres(mdb)) temp_tbl <- paste(c('pg_temp', temp_tbl), collapse = ".")
 
-    res <- tryCatch(fn(temp_tbl), error = function (e) {
-        tryCatch(mfdb_send(mdb, "DROP TABLE ", temp_tbl), error = function (e) NULL)
-        stop(e)
-    })
+    fn(temp_tbl)
+    # NB: We only do this if successful, otherwise we're rolling back anyway.
     mfdb_send(mdb, "DROP TABLE ", temp_tbl)
-    res
 }
 
 # Temporarily remove constraints from a table, assumes it's been wrapped in a transaction
 # NB: This *has* to be called within mfdb_transaction()
 mfdb_disable_constraints <- function(mdb, table_name, code_block) {
+    # If SQLite, use it's syntax instead
+    if (mfdb_is_sqlite(mdb)) {
+        mfdb_send(mdb, "PRAGMA ignore_check_constraints = 1")
+        on.exit(mfdb_send(mdb, "PRAGMA ignore_check_constraints = 0"), add = TRUE)
+        return(code_block)
+    }
+
+    if (mfdb_is_duckdb(mdb)) {
+        # No FOREIGN KEYs, so nothing to disable
+        return(code_block)
+    }
+
     # If we're not the owner of these tables, just execute code_block
     owner <- mfdb_fetch(mdb,
         "SELECT COUNT(*)",
@@ -216,25 +265,70 @@ mfdb_disable_constraints <- function(mdb, table_name, code_block) {
         }
         code_block
     }, finally = {
-        for(i in seq_len(nrow(constraints))) {
-            mfdb_send(mdb,
-                "ALTER TABLE ", mdb$schema, ".", constraints[i, "table_name"],
-                " ADD CONSTRAINT ", constraints[i, "name"], " ", constraints[i, "definition"])
-        }
+        # These will fail if a transaction is aborted, but in that case it'll roll back anyway
+        mfdb_ignore_failed_transction(mdb, {
+            for(i in seq_len(nrow(constraints))) {
+                mfdb_send(mdb,
+                    "ALTER TABLE ", mdb$schema, ".", constraints[i, "table_name"],
+                    " ADD CONSTRAINT ", constraints[i, "name"], " ", constraints[i, "definition"])
+            }
+        })
     })
 }
 
 # Do the given tables already exist?
-mfdb_table_exists <- function(mdb, table_name) {
-    mfdb_fetch(mdb,
+mfdb_table_exists <- function(mdb, table_name, schema_name = mdb$schema) {
+    if (mfdb_is_postgres(mdb) || class(mdb$db) == 'dbNull') return(mfdb_fetch(mdb,
         "SELECT COUNT(*)",
         " FROM information_schema.tables",
-        " WHERE (table_schema IN ", sql_quote(mdb$schema, always_bracket = TRUE),
+        " WHERE (table_schema IN ", sql_quote(schema_name, always_bracket = TRUE),
         " OR table_schema = (SELECT nspname FROM pg_namespace WHERE oid = pg_my_temp_schema()))",
-        " AND table_name IN ", sql_quote(table_name, always_bracket = TRUE))[, c(1)] > 0
+        " AND table_name IN ", sql_quote(table_name, always_bracket = TRUE))[, c(1)] > 0)
+    if (mfdb_is_duckdb(mdb)) return(mfdb_fetch(mdb,
+        "SELECT COUNT(*)",
+        " FROM information_schema.tables",
+        " WHERE (table_schema = 'main' OR table_schema = 'temp')",
+        " AND table_name IN ", sql_quote(table_name, always_bracket = TRUE))[, c(1)] > 0)
+    if (mfdb_is_sqlite(mdb)) {
+        if(mfdb_fetch(mdb, "
+            SELECT COUNT(*)
+              FROM sqlite_schema
+             WHERE type = 'table'
+               AND name IN ", sql_quote(table_name, always_bracket = TRUE), "
+            ")[, c(1)] > 0) return(TRUE)
+        if(mfdb_fetch(mdb, "
+            SELECT COUNT(*)
+              FROM temp.sqlite_schema
+             WHERE type = 'table'
+               AND name IN ", sql_quote(table_name, always_bracket = TRUE), "
+            ")[, c(1)] > 0) return(TRUE)
+        return(FALSE)
+    }
+    stop("Unknown DB type")
 }
 
 mfdb_create_table <- function(mdb, name, desc, cols = c(), keys = c()) {
+    fix_col_datatypes <- function (s) {
+        # Autoinc cols are SERIAL in postgres, INTEGER PRIMARY KEY in SQLite
+        if (mfdb_is_sqlite(mdb)) s <- gsub("SERIAL", "INTEGER", s)
+
+        if (mfdb_is_duckdb(mdb)) {
+            if (grepl("SERIAL", s)) {
+                # We need to explicitly define the sequence
+                seq_name <- paste0("seq_pk_", name)
+                mfdb_send(mdb, "CREATE SEQUENCE ", seq_name)
+                s <- gsub("SERIAL", paste0("INTEGER DEFAULT NEXTVAL(", sql_quote(seq_name), ")"), s)
+            }
+
+            # TIMESTAMP WITH TIMEZONE not supported
+            s <- gsub("TIMESTAMP WITH TIME ZONE", "TIMESTAMP", s)
+
+            # Foreign keys aren't supported
+            s <- gsub("REFERENCES.*", "", s)
+        }
+        return(s)
+    }
+
     items <- matrix(c(
         cols,
         unlist(lapply(keys, function (k) c(k, "", "")))
@@ -243,7 +337,7 @@ mfdb_create_table <- function(mdb, name, desc, cols = c(), keys = c()) {
     row_to_string <- function (i) {
         paste0("    ",
             items[1,i],
-            (if (nzchar(items[2,i])) paste("\t", items[2,i])),
+            (if (nzchar(items[2,i])) paste("\t", fix_col_datatypes(items[2,i]))),
             (if (i == ncol(items)) "" else ","),
             (if (nzchar(items[3,i])) paste("\t--", items[3,i])),
             "\n")
@@ -251,16 +345,19 @@ mfdb_create_table <- function(mdb, name, desc, cols = c(), keys = c()) {
 
     mfdb_send(mdb,
         if (nzchar(desc)) paste0("-- ", desc, "\n", collapse = ""),
-        "CREATE TABLE ", mdb$schema, ".", name, " (\n",
+        "CREATE TABLE ", (if (mfdb_is_postgres(mdb)) paste0(mdb$schema, ".", name) else name), " (\n",
         vapply(1:ncol(items), row_to_string, ""),
         ")")
-    if (nzchar(desc)) mfdb_send(mdb,
-        "COMMENT ON TABLE ", name,
-        " IS ", sql_quote(desc))
-    for (i in 1:ncol(items)) {
-        if (nzchar(items[3,i])) mfdb_send(mdb,
-            "COMMENT ON COLUMN ", name, ".", items[1,i],
-            " IS ", sql_quote(items[3,i]))
+
+    if (mfdb_is_postgres(mdb)) {
+        if (nzchar(desc)) mfdb_send(mdb,
+            "COMMENT ON TABLE ", name,
+            " IS ", sql_quote(desc))
+        for (i in 1:ncol(items)) {
+            if (nzchar(items[3,i])) mfdb_send(mdb,
+                "COMMENT ON COLUMN ", name, ".", items[1,i],
+                " IS ", sql_quote(items[3,i]))
+        }
     }
 }
 
@@ -322,8 +419,25 @@ mfdb_transaction <- function(mdb, transaction) {
     }
 
     mdb$logger$debug("Starting transaction...")
-    dbSendQuery(mdb$db, "BEGIN TRANSACTION")
-    ret <- tryCatch(transaction, error = function (e) e)
+    tryCatch(dbBegin(mdb$db), error = function (e) {
+        if (grepl('unable to find an inherited method for function.*dbBegin', e$message)) {
+            # Old PostgreSQL DBI driver is missing dbBegin
+            dbSendQuery(mdb$db, "BEGIN TRANSACTION")
+        } else {
+            stop(e)
+        }
+    })
+    if (mfdb_is_postgres(mdb)) mfdb_send(mdb, "SET search_path TO ", paste(mdb$schema, 'pg_temp', sep =","))
+    ret <- tryCatch(transaction, interrupt = function (e) e, error = function (e) e)
+    if ("interrupt" %in% class(ret)) {
+        mdb$logger$warn("Interrupted, rolling back transaction...")
+        tryCatch(dbRollback(mdb$db), error = function (e) NULL)
+        # NB: I can't see a way to re-throw ret, signalCondition(ret) would
+        #     only work for another tryCatch block, not global handlers.
+        #     rlang::interrupt() can do this properly, but the subtle difference
+        #     doesn't seem worth the dependency.
+        stop("Interrupted")
+    }
     if ("error" %in% class(ret)) {
         mdb$logger$warn("Rolling back transaction...")
         tryCatch(dbRollback(mdb$db), error = function (e) NULL)
@@ -332,4 +446,11 @@ mfdb_transaction <- function(mdb, transaction) {
     mdb$logger$debug("Committing transaction...")
     dbCommit(mdb$db)
     invisible(TRUE)
+}
+
+# Execute code block, ignore errors from a failed transaction
+mfdb_ignore_failed_transction <- function(mdb, code_block) {
+    tryCatch(code_block, error = function (e) {
+        if (!grepl("transaction.*aborted", e$message)) stop(e)
+    })
 }
