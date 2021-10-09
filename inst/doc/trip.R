@@ -137,9 +137,10 @@ year step area trip_start_port length number
     ')), "trip_start_port = mfdb_group(...)")
 
 ## -----------------------------------------------------------------------------
-mfdb_dplyr_sample(mdb, c('trip_start_port', 'trip_end_port', 'trip_start_port_latitude')) |>
-    dplyr::select('year', 'month', 'trip_start_port', 'trip_end_port', 'trip_start_port_latitude', 'count') |>
-    as.data.frame()
+# TODO: Use native pipe syntax once available
+x <- mfdb_dplyr_sample(mdb, c('trip_start_port', 'trip_end_port', 'trip_start_port_latitude'))
+x <- dplyr::select(x, 'year', 'month', 'trip_start_port', 'trip_end_port', 'trip_start_port_latitude', 'count')
+as.data.frame(x)
 
 ## ---- message=FALSE, echo=FALSE-----------------------------------------------
 ok(ut_cmp_equal(

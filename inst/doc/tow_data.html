@@ -539,20 +539,20 @@ agg_data</code></pre>
 agg_data</code></pre>
 <pre><code>## $`0.0.0.0`
 ##   year step area tow_bait_type number
-## 1  all  all  all          &lt;NA&gt;     21
-## 2  all  all  all            b1      3
-## 3  all  all  all            b2      3
-## 4  all  all  all            b3      3</code></pre>
+## 1  all  all  all            b1      3
+## 2  all  all  all            b2      3
+## 3  all  all  all            b3      3
+## 4  all  all  all          &lt;NA&gt;     21</code></pre>
 <p>And finally <code>tow_net_type</code>:</p>
 <pre class="r"><code>agg_data &lt;- mfdb_sample_count(mdb, c('tow_net_type'), list(
     tow_net_type = mfdb_unaggregated()))
 agg_data</code></pre>
 <pre><code>## $`0.0.0.0`
 ##   year step area tow_net_type number
-## 1  all  all  all         &lt;NA&gt;     21
-## 2  all  all  all        black      3
-## 3  all  all  all       orange      3
-## 4  all  all  all        white      3</code></pre>
+## 1  all  all  all        black      3
+## 2  all  all  all       orange      3
+## 3  all  all  all        white      3
+## 4  all  all  all         &lt;NA&gt;     21</code></pre>
 <pre class="r"><code>mfdb_disconnect(mdb)</code></pre>
 </div>
 

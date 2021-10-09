@@ -1,5 +1,5 @@
-a6292c6ccabcaebc50dfcb0a03fd1182 *ChangeLog
-4060aef20c799c3729ee84ddd12faaa3 *DESCRIPTION
+2ef2c17a6797e01f9a1bac4128e62f6d *ChangeLog
+e746520f4e28503c97c04260c1496c50 *DESCRIPTION
 9dfa2dd5f10c0d0d00aef138ee7d976f *NAMESPACE
 ed915ea55487f685a8d0aa9439ed3c63 *R/ewe_model.R
 c56a7b71339f02130cee316f49f196d3 *R/gadget_areafile.R
@@ -67,12 +67,12 @@ b17e8b41d0f40c1f4682385b6b6cf138 *inst/demo-data/reitmapping.tsv
 aac1e8fd2775f12f30637fd9db3d783b *inst/doc/population.R
 a0d2f3b73e4ca654b74098c2072db9c3 *inst/doc/population.Rmd
 aaca49b1d7cc504989a3bc48a8a20689 *inst/doc/population.html
-c80d579d0b3395d4f47f2503ef1b4a49 *inst/doc/tow_data.R
-4439d7d50be963805c7d14a1d0a04d1e *inst/doc/tow_data.Rmd
-15b43518fffbb59789d0022d5d608032 *inst/doc/tow_data.html
-14d78258a4f1e2b56424078729934b2a *inst/doc/trip.R
-fd2274f7d88551679b4a835c48348c19 *inst/doc/trip.Rmd
-086ebd6f3735508c9dd56ab10c47d0ab *inst/doc/trip.html
+bdb1880455a6de50a8a0b837072f3312 *inst/doc/tow_data.R
+68d1e7874f118af1927c65951318af2d *inst/doc/tow_data.Rmd
+7849fa38a4b93b2825903092898d6de7 *inst/doc/tow_data.html
+0c9d3bae084fe99f19b68f677486d1a9 *inst/doc/trip.R
+b7774c38eadd964babdb4251d86c50d6 *inst/doc/trip.Rmd
+5e778575c080b7708178c3fc2b74c3df *inst/doc/trip.html
 028a72630038ce8e72b2b7adb9ff3d06 *inst/doc/weightmeasurements.R
 37d41a7ff953d38df5be12c22742b423 *inst/doc/weightmeasurements.Rmd
 0ea790cb21da39090a7006e0f52ba65f *inst/doc/weightmeasurements.html
@@ -123,6 +123,6 @@ bbfff2cfcee163cde489b23311859fb2 *vignettes/hydroVar.txt
 7470925df4cbbbeead5ee9d0dc629d9f *vignettes/ices.rect.sea.txt
 1e003b8cfc81dacca48e493eb3ce37fb *vignettes/import_hydrography_cmems.Rmd
 a0d2f3b73e4ca654b74098c2072db9c3 *vignettes/population.Rmd
-4439d7d50be963805c7d14a1d0a04d1e *vignettes/tow_data.Rmd
-fd2274f7d88551679b4a835c48348c19 *vignettes/trip.Rmd
+68d1e7874f118af1927c65951318af2d *vignettes/tow_data.Rmd
+b7774c38eadd964babdb4251d86c50d6 *vignettes/trip.Rmd
 37d41a7ff953d38df5be12c22742b423 *vignettes/weightmeasurements.Rmd

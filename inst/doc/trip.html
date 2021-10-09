@@ -473,9 +473,10 @@ agg_data</code></pre>
 ## 5  all  all  all           other     20   1023
 ## 6  all  all  all           other     30    925</code></pre>
 <p>We can also use <code>mfdb_dplyr_sample</code> to re-extract data, joining with port metadata:</p>
-<pre class="r"><code>mfdb_dplyr_sample(mdb, c('trip_start_port', 'trip_end_port', 'trip_start_port_latitude')) |&gt;
-    dplyr::select('year', 'month', 'trip_start_port', 'trip_end_port', 'trip_start_port_latitude', 'count') |&gt;
-    as.data.frame()</code></pre>
+<pre class="r"><code># TODO: Use native pipe syntax once available
+x &lt;- mfdb_dplyr_sample(mdb, c('trip_start_port', 'trip_end_port', 'trip_start_port_latitude'))
+x &lt;- dplyr::select(x, 'year', 'month', 'trip_start_port', 'trip_end_port', 'trip_start_port_latitude', 'count')
+as.data.frame(x)</code></pre>
 <pre><code>##    year month trip_start_port trip_end_port trip_start_port_latitude count
 ## 1  2019     1           ISKEF         ISREK                    64.00   358
 ## 2  2019     1           ISKEF         ISREK                    64.00   320
