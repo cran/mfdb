@@ -2,8 +2,8 @@ Package: mfdb
 Type: Package
 Title: MareFrame DB Querying Library
 Encoding: UTF-8
-Version: 7.1-1
-Date: 2021-10-09
+Version: 7.2-0
+Date: 2021-11-21
 Authors@R: c(person("Jamie", "Lentin", email="lentinj@shuttlethread.com",role = c("aut", "cre", "cph")),
              person("Bjarki Thor", "Elvarsson", email="bjarki.elvarsson@hafogvatn.is",role = c("aut")))
 Maintainer: Jamie Lentin <lentinj@shuttlethread.com>
@@ -20,8 +20,8 @@ Suggests: dplyr (>= 0.8.3), dbplyr (>= 2.0.0), knitr, rmarkdown,
 VignetteBuilder: knitr
 LazyData: true
 NeedsCompilation: no
-Packaged: 2021-10-09 10:51:36 UTC; lentinj
+Packaged: 2021-11-21 11:41:36 UTC; lentinj
 Author: Jamie Lentin [aut, cre, cph],
   Bjarki Thor Elvarsson [aut]
 Repository: CRAN
-Date/Publication: 2021-10-09 11:20:02 UTC
+Date/Publication: 2021-11-21 12:30:02 UTC
