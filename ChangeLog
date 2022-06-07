@@ -1,4 +1,10 @@
 
+2022-06-07: Jamie Lentin <lentinj@shuttlethread.com>
+
+    Version 7.3-0
+    * More helpful error messages if taxonomy (e.g. vessel) items missing
+    * Support DuckDB 0.3.4 (unit tests weren't order agnostic)
+
 2021-11-21: Jamie Lentin <lentinj@shuttlethread.com>
 
     Version 7.2-0
