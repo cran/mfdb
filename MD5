@@ -1,5 +1,5 @@
-1c60dd0ff7036272b2ae8a3f040ed7d7 *ChangeLog
-31679e69000c4a1b11f73a00819bd274 *DESCRIPTION
+e740ccabe8364c14449ab73a415fe11b *ChangeLog
+9620f3e71312333d9eb3a3a058f6e1b9 *DESCRIPTION
 4551ed8142a3e2b45fdaef90e9d504d6 *NAMESPACE
 ed915ea55487f685a8d0aa9439ed3c63 *R/ewe_model.R
 c56a7b71339f02130cee316f49f196d3 *R/gadget_areafile.R
@@ -23,7 +23,7 @@ b2194dbc55d1a292c0a4035ba89f3609 *R/mfdb_aggregate_step_interval.R
 b58069485ee372abb68a0bd41dbd59bf *R/mfdb_helpers.R
 79a2d8075d79c2bb1dcb7cd29220f112 *R/mfdb_import_data.R
 3b8ed2026fb1166b40c3b0bcadfdea50 *R/mfdb_import_taxonomy.R
-8bdb5fd2413d5cae7530bc4bb3582c7a *R/mfdb_queries.R
+59b04e71a9f68a3eb217c860fc1dea2e *R/mfdb_queries.R
 17c465919b5a3d38bccbfb13890ef23d *R/mfdb_schema.R
 3c3ad95de683c20377ce22bb97f17186 *R/mfdb_schema_upgrades.R
 aa6541ff1897534ee4c79d760f286559 *R/mfdb_sharing.R
@@ -61,9 +61,9 @@ b2f8a3418761fb7121a7af251b82c61a *demo/inttest-stockfile.R
 f84a5f2bbb4551b95d122c5dca4ab681 *demo/inttest-tibble.R
 abef7403b1d60ccfae64ac1b502d6cc9 *demo/inttest-vessel.R
 b17e8b41d0f40c1f4682385b6b6cf138 *inst/demo-data/reitmapping.tsv
-7d7c8c32e44056654ac3ee637ccf04d2 *inst/doc/import_hydrography_cmems.R
-1e003b8cfc81dacca48e493eb3ce37fb *inst/doc/import_hydrography_cmems.Rmd
-f1c718f4cc5ce02152c3362ee71379e5 *inst/doc/import_hydrography_cmems.html
+8775a1d7ff2a74f0b48978d9af68b8f6 *inst/doc/import_hydrography_cmems.R
+9aabce0c6eb082e71054b993b824a527 *inst/doc/import_hydrography_cmems.Rmd
+0032b99580cdf56abf23346488d71a1a *inst/doc/import_hydrography_cmems.html
 aac1e8fd2775f12f30637fd9db3d783b *inst/doc/population.R
 a0d2f3b73e4ca654b74098c2072db9c3 *inst/doc/population.Rmd
 8d542a0a43a048c59d546015963fda03 *inst/doc/population.html
@@ -121,7 +121,7 @@ f5543b72d361ca89c9a15a8711751e5b *tests/utils/schema_2.x.sql
 0e5d03d7729503918d1bed42901b5348 *tests/utils/schema_5.x.dump
 bbfff2cfcee163cde489b23311859fb2 *vignettes/hydroVar.txt
 7470925df4cbbbeead5ee9d0dc629d9f *vignettes/ices.rect.sea.txt
-1e003b8cfc81dacca48e493eb3ce37fb *vignettes/import_hydrography_cmems.Rmd
+9aabce0c6eb082e71054b993b824a527 *vignettes/import_hydrography_cmems.Rmd
 a0d2f3b73e4ca654b74098c2072db9c3 *vignettes/population.Rmd
 b9d3b205f293060f5ba9a01c7518c65d *vignettes/tow_data.Rmd
 b7774c38eadd964babdb4251d86c50d6 *vignettes/trip.Rmd
